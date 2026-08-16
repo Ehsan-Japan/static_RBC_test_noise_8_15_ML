@@ -33,23 +33,23 @@ from run_1_generate_dataset import CONFIG as TEMPLATE
 
 # The measurement budget.  Every combination of the two lists is one cell:
 # one folder, one trained model, one row in the final table.
-RAYS = [10, 11, 12]
+RAYS = [12,13]
 POINTS = [20]
 
 # Dataset sizes.  The SAME for every cell on purpose, so the cells differ
 # only in how the devices were measured.
-N_TRAIN = 400
+N_TRAIN = 300
 N_TEST = 200
 
 # How long to train each cell.
-EPOCHS = 3
+EPOCHS =5
 
 # True: reuse checkpoints already on disk.  False: retrain every cell.
 # (Datasets are reused either way — devices are never re-simulated.)
 SKIP_EXISTING = True
 
 # Per-device pictures per cell.  Keep it small; use run_5 for the full set.
-FIGURE_DEVICES = {"train": [4, 5, 6, 7], "test": [4, 5, 6, 7]}
+FIGURE_DEVICES = {"train": [4, 5], "test": [4, 5]}
 
 # ══════════════════════════════════════════════════════════════════════════
 
