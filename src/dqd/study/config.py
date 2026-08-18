@@ -39,6 +39,7 @@ from typing import Dict, List, Optional, Tuple
 from ..config import paths
 from ..config.capacitance_config import CapacitanceConfig
 from ..simulation import device_factory
+from . import sampling
 from .device_figures import DEFAULT_DEVICE_FIGURES, normalise_devices
 
 # Sub-folders of a configuration folder, one per stage.
@@ -64,6 +65,13 @@ class StudyConfig:
     # ── the measurement budget: what the study is about ──────────────────
     n_rays: int = 3           # rays fired across the diagram
     n_points: int = 50        # points sampled along each ray
+
+    # WHERE those n_rays x n_points measured points are put.  "rays" is the
+    # real experiment and the default, so every existing configuration and
+    # every folder name is unchanged.  "grid" and "random" spend the SAME
+    # budget on scattered points instead, which is what
+    # scripts/run_7_compare_sampling.py compares (study/sampling.py).
+    sampling: str = sampling.DEFAULT
 
     # ── how much data ────────────────────────────────────────────────────
     n_train: int = 100        # devices the model trains on
@@ -114,6 +122,10 @@ class StudyConfig:
     # ------------------------------------------------------------------
 
     def __post_init__(self):
+        if self.sampling not in sampling.STRATEGIES:
+            raise ValueError(
+                f"sampling={self.sampling!r} is not a strategy; available: "
+                + ", ".join(sampling.STRATEGIES))
         self.voltage_window = tuple(float(v) for v in self.voltage_window)
         # Any figure kind left unmentioned is off, so a settings block that
         # lists only the pictures it wants behaves the way it reads.
@@ -134,8 +146,19 @@ class StudyConfig:
 
     @property
     def name(self) -> str:
-        """The folder name, e.g. '3_rays_50_points_100_samples'."""
-        return f"{self.n_rays}_rays_{self.n_points}_points_{self.n_train}_samples"
+        """
+        The folder name, e.g. '3_rays_50_points_100_samples'.
+
+        A non-default sampling strategy adds its name on the end
+        ('5_rays_20_points_300_samples_grid'), so the sampling comparison
+        gets its own folders and the budget study's folders keep the names
+        they already have.
+        """
+        base = (f"{self.n_rays}_rays_{self.n_points}_points_"
+                f"{self.n_train}_samples")
+        if self.sampling == sampling.DEFAULT:
+            return base
+        return f"{base}_{self.sampling}"
 
     @property
     def dir(self) -> str:

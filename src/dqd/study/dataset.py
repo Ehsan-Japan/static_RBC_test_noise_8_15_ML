@@ -40,9 +40,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from ..ml import grid_dataset
 from ..simulation import device_factory
-from . import device_figures, device_split
+from . import device_figures, device_split, sampling
 from .config import SUMMARY_JSON, SUMMARY_TXT, StudyConfig
 
 
