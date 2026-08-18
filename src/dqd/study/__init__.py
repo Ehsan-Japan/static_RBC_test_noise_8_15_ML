@@ -13,4 +13,11 @@ The programs in scripts/ are settings blocks; everything they do lives here:
     evaluation.py stage 3 — score the checkpoint and draw what it predicts
     comparison.py stage 4 — put every configuration side by side
     sweep.py     stages 1-4 for a grid of budgets, behind run_0
+
+One separate question, with its own program (run_7) and no place in the
+four-stage sequence:
+
+    sampling.py        WHERE the measured points are put — directional rays,
+                       an even lattice, or a random draw — at one fixed budget
+    sampling_study.py  the three arms and the paired comparison between them
 """

@@ -129,16 +129,23 @@ def measure_split(cfg: StudyConfig, sample_dirs: Sequence[str], out_npz: str,
     Y not depending on the budget is the whole experiment: only X gets
     sparser as rays or points are removed, so a change in accuracy is a
     change in the measurement and nothing else.
+
+    WHERE those points go is cfg.sampling — "rays" for the whole budget
+    study, which study/sampling.py delegates straight back to
+    grid_dataset.build, so this is the dataset it has always built.
     """
     if not sample_dirs:
         raise RuntimeError(f"no usable devices for the {tag} split")
     print(f"\nmeasuring {tag}: {len(sample_dirs)} devices, "
-          f"{cfg.n_rays} rays x {cfg.n_points} points")
-    X, Y = grid_dataset.build(sample_dirs, cfg.n_rays, cfg.n_points)
+          f"{cfg.n_rays} rays x {cfg.n_points} points "
+          f"({cfg.n_rays * cfg.n_points} points, placed by '{cfg.sampling}')")
+    X, Y = sampling.build(sample_dirs, cfg.n_rays, cfg.n_points,
+                          strategy=cfg.sampling, seed=cfg.seed)
     os.makedirs(os.path.dirname(out_npz), exist_ok=True)
     np.savez_compressed(out_npz, X=X, Y=Y,
                         samples=np.array(sample_dirs),
-                        n_rays=cfg.n_rays, n_points=cfg.n_points)
+                        n_rays=cfg.n_rays, n_points=cfg.n_points,
+                        sampling=cfg.sampling)
     print(f"  {os.path.abspath(out_npz)}   X{X.shape}   "
           f"{100 * X[:, 1].mean():.2f}% of pixels measured, "
           f"{100 * Y.mean():.2f}% are transition lines")
@@ -235,7 +242,8 @@ def summary_text(cfg: StudyConfig, report: Dict) -> str:
         f"  train / test            {report['split']['n_train']} / "
         f"{report['split']['n_test']}   (split on device ID, seed "
         f"{cfg.split_seed})",
-        f"  measurement             {cfg.n_rays} rays x {cfg.n_points} points",
+        f"  measurement             {cfg.n_rays} rays x {cfg.n_points} points"
+        f"  =  {cfg.n_rays * cfg.n_points} points, placed by '{cfg.sampling}'",
         f"  diagram size            {cfg.resolution} x {cfg.resolution} px",
         "",
         "  EVERY DIAGRAM IS A DQD STABILITY DIAGRAM",
@@ -311,6 +319,14 @@ def build(cfg: StudyConfig, rebuild: bool = False) -> Dict:
         f.write(text)
     print("\n" + text)
 
-    print("── per-device figures " + "─" * 38)
-    device_figures.render_config(cfg)
+    # The per-device pictures draw the RAY geometry over the diagram, so
+    # they are meaningful only for the ray measurement.  A scattered
+    # strategy gets the side-by-side measurement figure that
+    # study/sampling_study.py draws instead.
+    if cfg.sampling == "rays":
+        print("── per-device figures " + "─" * 38)
+        device_figures.render_config(cfg)
+    else:
+        print(f"\n[note] per-device ray figures skipped: this configuration "
+              f"is sampled by '{cfg.sampling}', which fires no rays.")
     return report

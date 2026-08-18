@@ -39,11 +39,12 @@ reported and the rest carry on.
 True`), so for most sweeps you never need to run step 4 separately. Step 4 is
 there for comparing a different subset, or re-drawing the figures later.
 
-There are two extra programs, neither of them part of the sequence:
+There are extra programs, none of them part of the sequence:
 
 ```
 python scripts/run_0_full_sweep.py               steps 1-4 for a whole sweep
 python scripts/run_5_render_device_figures.py    redraw per-device pictures
+python scripts/run_7_compare_sampling.py         same budget, spent differently
 ```
 
 **`run_0` is the lazy button.** Give it a list of ray counts and point counts,
@@ -64,6 +65,46 @@ cannot drift apart. It calls the same library functions steps 1–4 do, in the
 same order, so it cannot produce a different answer than running them by
 hand. It is restartable: anything already on disk is reused, so adding one
 more ray count and re-running costs only the new cell.
+
+**`run_7` answers a different question from the other programs.** They all
+ask how MANY points are needed; run_7 asks whether it matters WHERE they go.
+It takes one budget and spends it three ways — the same N = rays x points
+measured points each time:
+
+| arm | what it measures |
+|---|---|
+| `rays` | `n_rays` directional sweeps of `n_points` — the real experiment |
+| `grid` | the same N points on an evenly spaced lattice |
+| `random` | the same N pixels, drawn uniformly at random, per device |
+
+Same devices, same stored split, same network, same training constants, same
+metric — only the placement changes, so a difference in the result is a
+difference in placement. Each arm is an ordinary configuration folder with
+the strategy on the end of its name, and the `rays` arm IS the ordinary
+configuration, reused as it stands if it is already trained:
+
+```
+training_data/5_rays_20_points_300_samples/          the rays
+training_data/5_rays_20_points_300_samples_grid/     the lattice
+training_data/5_rays_20_points_300_samples_random/   the random draw
+results/sampling_5x20_300_samples_rays-grid-random/  the answer
+    comparison.txt      the table, the paired test, and the verdict
+    comparison.csv/json the same numbers, machine-readable
+    per_device.csv      one row per held-out device per arm — the paired data
+    figures/f1_by_strategy.png        the headline bar chart
+           f1_vs_tolerance.png        is the gap sub-pixel, or real lines?
+           paired_f1.png              every device, rays vs scattered
+           what_the_network_sees.png  the picture that makes the argument
+```
+
+Because every arm is scored on the **same** held-out devices, the comparison
+is paired: `comparison.txt` reports the mean difference in F1@1 with a 95%
+confidence interval, the fraction of devices the rays win on, and a Wilcoxon
+signed-rank p-value. Two things it prints and the paper should keep: the
+rays visit slightly **fewer** unique pixels than N (nearest-cell sampling
+makes points on a ray coincide), so they win from an equal or smaller budget;
+and each arm is a single training run, so a margin comparable to
+initialisation spread needs repeating at another seed before it is claimed.
 
 **`run_5`** exists so you can change your mind about pictures — more devices,
 another figure, 300 dpi for the paper — without regenerating any data or
