@@ -33,8 +33,8 @@ from run_1_generate_dataset import CONFIG as TEMPLATE
 
 # The measurement budget.  Every combination of the two lists is one cell:
 # one folder, one trained model, one row in the final table.
-RAYS = [12,13]
-POINTS = [20]
+RAYS = [5,6]
+POINTS = [30]
 
 # Dataset sizes.  The SAME for every cell on purpose, so the cells differ
 # only in how the devices were measured.
