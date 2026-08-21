@@ -38,8 +38,8 @@ POINTS = [30]
 
 # Dataset sizes.  The SAME for every cell on purpose, so the cells differ
 # only in how the devices were measured.
-N_TRAIN = 300
-N_TEST = 200
+N_TRAIN = 100
+N_TEST = 20
 
 # How long to train each cell.
 EPOCHS =5

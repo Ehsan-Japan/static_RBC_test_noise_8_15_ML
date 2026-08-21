@@ -45,6 +45,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 from ..config.axis_labels import set_axis_labels, x_label, y_label
 from ..config.figure_style import (
@@ -88,6 +89,18 @@ FIGURE_KINDS: List[Tuple[str, str]] = [
      "the 1-D signal along each ray, with the detected peaks marked"),
     ("panel",
      "sensor / stability diagram / rays / measurement, side by side"),
+    # The four the original pipeline drew into runs/<...>/sample_<i>/.  They
+    # show the same measurement as the four above; what differs is that the
+    # peaks are kept SEPARATE PER RAY, which is what you want when the
+    # question is "which ray found which line", not "how much was measured".
+    ("all_rays_peaks_overlay",
+     "sensor image with each ray's peaks in its own colour"),
+    ("ml_measurement",
+     "measured points and their peaks on the bare cell grid"),
+    ("summary_total",
+     "ground truth + measured points + each ray's peaks in its own colour"),
+    ("summary_total_all_crosses",
+     "the same, with every peak as one big magenta X (publication figure)"),
 ]
 
 # The default menu: on for the three you asked for plus the overlay, off for
@@ -106,6 +119,10 @@ DEFAULT_DEVICE_FIGURES: Dict[str, bool] = {
     "measurement": False,
     "ray_traces": False,
     "panel": True,
+    "all_rays_peaks_overlay": False,
+    "ml_measurement": False,
+    "summary_total": False,
+    "summary_total_all_crosses": False,
 }
 
 # Ray markers on the sensor image: white so they read over the "hot" colormap,
@@ -306,6 +323,152 @@ def fig_ray_traces(m, out_path: str, title: str) -> None:
     plt.close(fig)
 
 
+# ── the original pipeline's four ──────────────────────────────────────────
+#
+# These reproduce runs/<timestamp>_experiment/sample_<i>/*.png from the
+# pipeline this study grew out of.  The only thing they need that the four
+# figures above do not is the peaks kept SEPARATE PER RAY: measure() dedups
+# them into one array, because that is what the network is fed, but a picture
+# that colours ray 18° differently from ray 36° has to know which is which.
+
+# One big single-colour cross for the publication figure: every one of them
+# means the same thing, so they are drawn identically and share one legend
+# entry, rather than reading as a dozen different categories.
+UNIFORM_CROSS = dict(marker="X", s=420, linewidths=1.6, facecolors="magenta",
+                     edgecolors="black", zorder=7)
+UNIFORM_CROSS_LABEL = "Directional Sweep Start Points"
+LABEL_TRUTH = "Transition Lines (Ground Truth)"
+
+
+def peaks_per_ray(ux, uy, polylines, m) -> List[np.ndarray]:
+    """
+    [(n_peaks_k, 2) voltages] — one array per ray, in ray order.
+
+    Recomputed from m.traces with the same find_peaks call measure() makes,
+    so these are exactly the peaks the study used; grouping them by ray is
+    the one thing the deduplicated Measurement.peak_rc cannot tell you.
+    Peaks are snapped to cell centres, as the pipeline's figures drew them.
+    """
+    from scipy.signal import find_peaks
+
+    out = []
+    for trace, pts in zip(m.traces, polylines):
+        idx = find_peaks(trace)[0]
+        if not len(idx):
+            out.append(np.empty((0, 2)))
+            continue
+        row, col = voltage_to_pixel(pts[idx, 0], pts[idx, 1], ux, uy)
+        out.append(np.stack([ux[col], uy[row]], axis=1))
+    return out
+
+
+def _visited_voltages(ux, uy, m) -> np.ndarray:
+    """(n_visited, 2) voltages of the cells any ray passed through."""
+    if not len(m.visited_rc):
+        return np.empty((0, 2))
+    return np.stack([ux[m.visited_rc[:, 1]], uy[m.visited_rc[:, 0]]], axis=1)
+
+
+def _ray_colors(n: int):
+    return plt.cm.tab10(np.linspace(0, 1, max(n, 1)))
+
+
+def fig_all_rays_peaks_overlay(ux, uy, Z, per_ray, out_path: str,
+                               title: str) -> None:
+    """
+    The sensor image with each ray's peaks in its own colour.
+
+    The rays themselves are NOT drawn: with the peaks colour-coded the
+    interesting thing is where along each direction the signal turned over,
+    and the scanned points would bury it.
+    """
+    fig, ax, cax = new_map_figure(with_colorbar=True)
+    im = ax.imshow(Z, extent=_extent(ux, uy), origin="lower", aspect="auto",
+                   cmap="hot")
+    angles = fan_angles(len(per_ray))
+    colors = _ray_colors(len(per_ray))
+    for k, (pk, angle) in enumerate(zip(per_ray, angles)):
+        if len(pk):
+            ax.scatter(pk[:, 0], pk[:, 1], marker="x", color=colors[k],
+                       s=50, linewidths=1, label=f"Ray {round(angle)}°")
+    apply_voltage_axes(ax, *_extent(ux, uy))
+    ax.set_title(title)
+    fig.colorbar(im, cax=cax, label="Sensor Signal")
+    ax.legend(loc="upper right")
+    save_figure(fig, out_path)
+
+
+def fig_ml_measurement(ux, uy, m, peaks, out_path: str, title: str) -> None:
+    """
+    The measured points and their peaks on the bare cell grid.
+
+    Neither the sensor image nor the ground truth is shown: this is the
+    measurement on its own, so how little of the plane it touches is the
+    only thing the figure says.
+    """
+    x_edges, y_edges = _edges(ux, uy)
+    fig, ax, _ = new_map_figure()
+    # An all-zero map is the house style's white cells with their black
+    # boundaries — the grid, and nothing else on it.
+    draw_truth(ax, x_edges, y_edges, np.zeros((len(uy), len(ux))))
+    seen = _visited_voltages(ux, uy, m)
+    if len(seen):
+        ax.scatter(seen[:, 0], seen[:, 1], label=LABEL_SCANNED,
+                   **MARKER_SCANNED)
+    if len(peaks):
+        ax.scatter(peaks[:, 0], peaks[:, 1], label=LABEL_PEAK, **MARKER_PEAK)
+    apply_voltage_axes(ax, *_extent(ux, uy))
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=14)
+    save_figure(fig, out_path)
+
+
+def fig_summary_total(ux, uy, gt, m, peaks, per_ray, out_path: str,
+                      title: str, cell_grid: bool = True,
+                      uniform: bool = False) -> None:
+    """
+    Ground truth, measured points and the peaks, all in one picture.
+
+    uniform=False  each ray's peaks in its own tab10 colour, out of the
+                   legend — summary_total.png
+    uniform=True   every peak as one big magenta X with a single legend
+                   entry — summary_total_all_crosses.png, the publication
+                   figure, where the crosses all mean the same thing and
+                   twelve legend rows would only suggest they do not
+    """
+    x_edges, y_edges = _edges(ux, uy)
+    fig, ax, _ = new_map_figure()
+    draw_truth(ax, x_edges, y_edges, gt, cell_grid)
+
+    seen = _visited_voltages(ux, uy, m)
+    if len(seen):
+        ax.scatter(seen[:, 0], seen[:, 1], label="_nolegend_",
+                   **MARKER_SCANNED)
+
+    if uniform:
+        allpk = np.concatenate([p for p in per_ray if len(p)])             if any(len(p) for p in per_ray) else np.empty((0, 2))
+        if len(allpk):
+            ax.scatter(allpk[:, 0], allpk[:, 1], label=UNIFORM_CROSS_LABEL,
+                       **UNIFORM_CROSS)
+    else:
+        if len(peaks):
+            ax.scatter(peaks[:, 0], peaks[:, 1], label=LABEL_PEAK,
+                       **MARKER_PEAK)
+        colors = _ray_colors(len(per_ray))
+        for k, pk in enumerate(per_ray):
+            if len(pk):
+                ax.scatter(pk[:, 0], pk[:, 1], marker="x", color=colors[k],
+                           s=80, linewidths=2, zorder=6, label="_nolegend_")
+
+    apply_voltage_axes(ax, *_extent(ux, uy))
+    ax.set_title(title)
+    handles, labels = ax.get_legend_handles_labels()
+    patch = Patch(facecolor="black", edgecolor="black", label=LABEL_TRUTH)
+    ax.legend(handles=[patch] + handles, labels=[LABEL_TRUTH] + labels,
+              loc="upper right", fontsize=14 if uniform else 8)
+    save_figure(fig, out_path)
+
+
 def fig_panel(ux, uy, Z, gt, polylines, peaks, m, out_path: str,
               title: str, cell_grid: bool = True) -> None:
     """Sensor, stability diagram, rays and measurement, side by side."""
@@ -358,11 +521,19 @@ def render_device(sample_dir: str, out_dir: str, n_rays: int, n_points: int,
 
     needs_rays = any(wanted.get(k) for k in
                      ("rays", "rays_on_truth", "measurement", "ray_traces",
-                      "panel"))
+                      "panel", "all_rays_peaks_overlay", "ml_measurement",
+                      "summary_total", "summary_total_all_crosses"))
     polylines = peaks = m = None
     if needs_rays:
         polylines, peaks, m = ray_geometry(sample_dir, ux, uy, n_rays,
                                            n_points)
+
+    # Only the per-ray figures need the peaks split by ray, and splitting
+    # them means running find_peaks again — so do it only if one is wanted.
+    per_ray = None
+    if any(wanted.get(k) for k in ("all_rays_peaks_overlay", "summary_total",
+                                   "summary_total_all_crosses")):
+        per_ray = peaks_per_ray(ux, uy, polylines, m)
 
     tag = f"{label}  " if label else ""
     budget = f"{n_rays} rays x {n_points} points"
@@ -396,6 +567,22 @@ def render_device(sample_dir: str, out_dir: str, n_rays: int, n_points: int,
     if wanted.get("panel"):
         fig_panel(ux, uy, Z, gt, polylines, peaks, m, path("panel"),
                   f"{tag}{budget}", cell_grid)
+    if wanted.get("all_rays_peaks_overlay"):
+        fig_all_rays_peaks_overlay(ux, uy, Z, per_ray,
+                                   path("all_rays_peaks_overlay"),
+                                   f"{tag}peaks per ray, {budget}")
+    if wanted.get("ml_measurement"):
+        fig_ml_measurement(ux, uy, m, peaks, path("ml_measurement"),
+                           f"{tag}measurement, {budget}")
+    if wanted.get("summary_total"):
+        fig_summary_total(ux, uy, gt, m, peaks, per_ray,
+                          path("summary_total"),
+                          f"{tag}{budget} on the stability diagram", cell_grid)
+    if wanted.get("summary_total_all_crosses"):
+        fig_summary_total(ux, uy, gt, m, peaks, per_ray,
+                          path("summary_total_all_crosses"),
+                          f"{tag}{budget} on the stability diagram", cell_grid,
+                          uniform=True)
     return written
 
 
