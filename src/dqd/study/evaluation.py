@@ -155,11 +155,40 @@ def _blank(ax):
         s.set_color("#bbbbbb")
 
 
-def _panel(out_path: str, draw, title: str):
-    """One square map, on its own, saved as its own file."""
+def _device_extent(sample_dir: str):
+    """
+    [vxmin, vxmax, vymin, vymax] of the device the arrays came from, or None.
+
+    The npz carries pixels only, so the gate voltages are read back from the
+    device folder the sample came from.  If that folder has been moved or the
+    pool deleted, the panels still draw — just without a voltage scale.
+    """
+    from .device_figures import _extent, load_device
+
+    try:
+        ux, uy, _, _ = load_device(sample_dir)
+    except Exception:
+        return None
+    return _extent(ux, uy)
+
+
+def _panel(out_path: str, draw, title: str, extent=None):
+    """
+    One square map, on its own, saved as its own file.
+
+    With ``extent`` the panel gets the same labelled voltage axes as every
+    other figure in the study, so a prediction can be laid next to the
+    device's stability diagram and read at the same scale; without it the
+    frame is left blank rather than showing meaningless pixel indices.
+    """
+    from ..config.figure_style import apply_voltage_axes
+
     fig, ax = plt.subplots(figsize=(4.6, 4.8))
     draw(ax)
-    _blank(ax)
+    if extent is None:
+        _blank(ax)
+    else:
+        apply_voltage_axes(ax, *extent)
     ax.set_title(title, fontsize=10, color=INK)
     fig.tight_layout()
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
@@ -214,20 +243,24 @@ def render_device_panels(X, Y, pred, prob, rows, sample_dirs, cfg,
         tag = f"{names[i]}  —  F1@1 {row[HEADLINE]:.3f}"
 
         visited = X[i, 1] > 0.5
+        ext = _device_extent(sample_dirs[i])
         _panel(os.path.join(out, "measurement.png"),
                lambda ax: ax.imshow(np.where(visited, X[i, 0], np.nan),
                                     origin="lower", cmap=cm, vmin=0, vmax=1,
+                                    extent=ext, aspect="auto",
                                     interpolation="nearest"),
                f"measurement — {cfg.n_rays} rays x {cfg.n_points} points"
-               f"\n{tag}")
+               f"\n{tag}", ext)
         _panel(os.path.join(out, "ground_truth.png"),
                lambda ax: ax.imshow(1 - (Y[i] > 0.5), origin="lower",
-                                    cmap="gray", interpolation="nearest"),
-               f"ground truth\n{tag}")
+                                    cmap="gray", extent=ext, aspect="auto",
+                                    interpolation="nearest"),
+               f"ground truth\n{tag}", ext)
         _panel(os.path.join(out, "prediction.png"),
                lambda ax: ax.imshow(1 - pred[i], origin="lower", cmap="gray",
+                                    extent=ext, aspect="auto",
                                     interpolation="nearest"),
-               f"U-Net prediction\n{tag}")
+               f"U-Net prediction\n{tag}", ext)
         written += 3
     print(f"  per-device panels for {len(picks)} device(s): "
           f"{', '.join(names[i] for i in picks)}")

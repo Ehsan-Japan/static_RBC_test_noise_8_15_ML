@@ -338,9 +338,9 @@ def fig_ray_traces(m, out_path: str, title: str) -> None:
 # that colours ray 18° differently from ray 36° has to know which is which.
 
 # One big single-colour cross for the publication figure: every one of them
-# means the same thing, so they are drawn identically and share one legend
-# entry, rather than reading as a dozen different categories.
-UNIFORM_CROSS = dict(marker="X", s=420, linewidths=1.6, facecolors="magenta",
+# means the same thing, so they are drawn identically, large enough to read
+# at print size, rather than reading as a dozen different categories.
+UNIFORM_CROSS = dict(marker="X", s=180, linewidths=2.0, facecolors="magenta",
                      edgecolors="black", zorder=7)
 UNIFORM_CROSS_LABEL = "Directional Sweep Start Points"
 LABEL_TRUTH = "Transition Lines (Ground Truth)"
@@ -437,10 +437,10 @@ def fig_summary_total(ux, uy, gt, m, peaks, per_ray, out_path: str,
 
     uniform=False  each ray's peaks in its own tab10 colour, out of the
                    legend — summary_total.png
-    uniform=True   every peak as one big magenta X with a single legend
-                   entry — summary_total_all_crosses.png, the publication
-                   figure, where the crosses all mean the same thing and
-                   twelve legend rows would only suggest they do not
+    uniform=True   every peak as one big magenta X and no legend at all —
+                   summary_total_all_crosses.png, the publication figure,
+                   where the crosses all mean the same thing and a legend
+                   would only cover the diagram
     """
     x_edges, y_edges = _edges(ux, uy)
     fig, ax, _ = new_map_figure()
@@ -468,10 +468,11 @@ def fig_summary_total(ux, uy, gt, m, peaks, per_ray, out_path: str,
 
     apply_voltage_axes(ax, *_extent(ux, uy))
     ax.set_title(title)
-    handles, labels = ax.get_legend_handles_labels()
-    patch = Patch(facecolor="black", edgecolor="black", label=LABEL_TRUTH)
-    ax.legend(handles=[patch] + handles, labels=[LABEL_TRUTH] + labels,
-              loc="upper right", fontsize=14 if uniform else 8)
+    if not uniform:
+        handles, labels = ax.get_legend_handles_labels()
+        patch = Patch(facecolor="black", edgecolor="black", label=LABEL_TRUTH)
+        ax.legend(handles=[patch] + handles, labels=[LABEL_TRUTH] + labels,
+                  loc="upper right", fontsize=8)
     save_figure(fig, out_path)
 
 

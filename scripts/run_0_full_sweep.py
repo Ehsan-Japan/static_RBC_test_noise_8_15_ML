@@ -16,40 +16,31 @@ the cells that are new.
 """
 import os
 import sys
-
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 sys.path.insert(0, _HERE)
-
 import matplotlib
 matplotlib.use("Agg")
-
 from dqd.study import sweep
 from run_1_generate_dataset import CONFIG as TEMPLATE
-
 # ══════════════════════════════════════════════════════════════════════════
 #  SETTINGS
 # ══════════════════════════════════════════════════════════════════════════
-
 # The measurement budget.  Every combination of the two lists is one cell:
 # one folder, one trained model, one row in the final table.
-RAYS = [5,6]
-POINTS = [30]
-
+RAYS = [8,9,10]
+POINTS = [40]
 # Dataset sizes.  The SAME for every cell on purpose, so the cells differ
 # only in how the devices were measured.
-N_TRAIN = 100
-N_TEST = 20
-
+N_TRAIN =500
+N_TEST = 100
 # How long to train each cell.
-EPOCHS =5
-
+EPOCHS =50
 # True: reuse checkpoints already on disk.  False: retrain every cell.
 # (Datasets are reused either way — devices are never re-simulated.)
 SKIP_EXISTING = True
-
 # Per-device pictures per cell.  Keep it small; use run_5 for the full set.
-FIGURE_DEVICES = {"train": [4, 5], "test": [4, 5]}
+FIGURE_DEVICES = {"train": [4,5,6,7], "test": [4,5,6,7]}
 
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -58,3 +49,6 @@ if __name__ == "__main__":
               rays=RAYS, points=POINTS,
               n_train=N_TRAIN, n_test=N_TEST, epochs=EPOCHS,
               skip_existing=SKIP_EXISTING, figure_devices=FIGURE_DEVICES)
+
+
+
