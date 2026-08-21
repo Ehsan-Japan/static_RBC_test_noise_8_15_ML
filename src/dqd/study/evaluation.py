@@ -109,6 +109,13 @@ def score(cfg: StudyConfig) -> Tuple[Dict, List[Dict], np.ndarray, np.ndarray,
             f"{ck['n_points']} points but this configuration is "
             f"{cfg.n_rays} x {cfg.n_points}.  Scoring it here would compare a "
             f"model against a measurement it never saw.")
+    trained_on = ck.get("sampling", "rays")
+    if trained_on != cfg.sampling:
+        raise ValueError(
+            f"checkpoint was trained on '{trained_on}' sampling but this "
+            f"configuration is '{cfg.sampling}'.  Same budget, different "
+            f"places: scoring it here would compare a model against a "
+            f"measurement it never saw.")
 
     print(f"scoring {len(X)} held-out devices at {cfg.n_rays} rays x "
           f"{cfg.n_points} points (threshold {threshold}, fixed during "
@@ -122,6 +129,8 @@ def score(cfg: StudyConfig) -> Tuple[Dict, List[Dict], np.ndarray, np.ndarray,
         "configuration": cfg.name,
         "n_rays": cfg.n_rays,
         "n_points": cfg.n_points,
+        "sampling": cfg.sampling,
+        "n_measured_points": int(cfg.n_rays * cfg.n_points),
         "n_train_devices": int(ck.get("n_train", 0)),
         "n_test_devices": int(len(X)),
         "threshold": threshold,

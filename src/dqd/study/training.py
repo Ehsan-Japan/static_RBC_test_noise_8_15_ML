@@ -81,7 +81,8 @@ def train(cfg: StudyConfig) -> Tuple[str, Dict]:
     os.makedirs(cfg.model_dir, exist_ok=True)
 
     print(f"training on {len(X)} devices, {cfg.n_rays} rays x "
-          f"{cfg.n_points} points, {cfg.epochs} epochs")
+          f"{cfg.n_points} points placed by '{cfg.sampling}', "
+          f"{cfg.epochs} epochs")
     print(f"  {100 * float(X[:, 1].mean()):.2f}% of pixels measured, "
           f"{100 * float(Y.mean()):.2f}% are transition lines")
 
@@ -89,6 +90,7 @@ def train(cfg: StudyConfig) -> Tuple[str, Dict]:
 
     grid_train.save(net, threshold, cfg.checkpoint, cfg.n_rays, cfg.n_points,
                     extra={"n_train": len(X),
+                           "sampling": cfg.sampling,
                            "epochs": cfg.epochs,
                            "config": cfg.name,
                            "train_npz": os.path.abspath(cfg.train_npz)})

@@ -39,6 +39,7 @@ from typing import Dict, List, Optional, Tuple
 from ..config import paths
 from ..config.capacitance_config import CapacitanceConfig
 from ..simulation import device_factory
+from . import sampling
 from .device_figures import DEFAULT_DEVICE_FIGURES, normalise_devices
 
 # Sub-folders of a configuration folder, one per stage.
@@ -64,6 +65,13 @@ class StudyConfig:
     # ── the measurement budget: what the study is about ──────────────────
     n_rays: int = 3           # rays fired across the diagram
     n_points: int = 50        # points sampled along each ray
+
+    # WHERE those n_rays x n_points measured points are put.  "rays" is the
+    # real experiment and the default, so every existing configuration and
+    # every folder name is unchanged.  "grid" and "random" spend the SAME
+    # budget on scattered points instead, which is what
+    # scripts/run_7_compare_sampling.py compares (study/sampling.py).
+    sampling: str = sampling.DEFAULT
 
     # ── how much data ────────────────────────────────────────────────────
     n_train: int = 100        # devices the model trains on
@@ -114,6 +122,10 @@ class StudyConfig:
     # ------------------------------------------------------------------
 
     def __post_init__(self):
+        if self.sampling not in sampling.STRATEGIES:
+            raise ValueError(
+                f"sampling={self.sampling!r} is not a strategy; available: "
+                + ", ".join(sampling.STRATEGIES))
         self.voltage_window = tuple(float(v) for v in self.voltage_window)
         # Any figure kind left unmentioned is off, so a settings block that
         # lists only the pictures it wants behaves the way it reads.
@@ -134,8 +146,19 @@ class StudyConfig:
 
     @property
     def name(self) -> str:
-        """The folder name, e.g. '3_rays_50_points_100_samples'."""
-        return f"{self.n_rays}_rays_{self.n_points}_points_{self.n_train}_samples"
+        """
+        The folder name, e.g. '3_rays_50_points_100_samples'.
+
+        A non-default sampling strategy adds its name on the end
+        ('5_rays_20_points_300_samples_grid'), so the sampling comparison
+        gets its own folders and the budget study's folders keep the names
+        they already have.
+        """
+        base = (f"{self.n_rays}_rays_{self.n_points}_points_"
+                f"{self.n_train}_samples")
+        if self.sampling == sampling.DEFAULT:
+            return base
+        return f"{base}_{self.sampling}"
 
     @property
     def dir(self) -> str:
@@ -235,12 +258,19 @@ class StudyConfig:
                 f"  folder      : {os.path.abspath(self.dir)}")
 
 
-def existing_configs() -> list:
+def existing_configs(every_sampling: bool = False) -> list:
     """
     Every configuration folder under training_data/, oldest name first.
 
     A folder counts only if it has a config.json, so the shared device pool
     and anything else living in training_data/ is never mistaken for one.
+
+    DISCOVERY IGNORES THE SAMPLING ARMS.  run_7 writes ordinary configuration
+    folders for its 'grid' and 'random' arms, and they are the same budget as
+    the ray arm beside them — so "compare everything" would put two different
+    measurements on the same point of the budget figure and quietly average
+    them.  They are found only when asked for by name, or with
+    every_sampling=True.
     """
     root = paths.TRAINING_DATA
     if not os.path.isdir(root):
@@ -250,9 +280,12 @@ def existing_configs() -> list:
         folder = os.path.join(root, name)
         if os.path.isfile(os.path.join(folder, CONFIG_JSON)):
             try:
-                out.append(StudyConfig.load(folder))
+                cfg = StudyConfig.load(folder)
             except Exception as exc:
                 print(f"[skip] {name}: {exc}")
+                continue
+            if every_sampling or cfg.sampling == sampling.DEFAULT:
+                out.append(cfg)
     return out
 
 
@@ -287,12 +320,15 @@ def resolve_configs(names) -> List[StudyConfig]:
     quietly skipping it: a comparison silently missing a configuration is a
     comparison that says something untrue.
     """
-    available = existing_configs()
     if names is None or (isinstance(names, str) and names.strip().upper() == ALL):
-        return available
+        # "ALL" means every budget of the study — not run_7's sampling arms,
+        # which are a different measurement at the same budget.
+        return existing_configs()
     if isinstance(names, str):
         names = [names]
-    by_name = {c.name: c for c in available}
+    # Named explicitly, a sampling arm resolves like any other folder: asking
+    # for it by name is unambiguous in a way that discovery is not.
+    by_name = {c.name: c for c in existing_configs(every_sampling=True)}
     picked, missing = [], []
     for name in names:
         if name in by_name:
