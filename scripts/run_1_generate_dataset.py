@@ -119,6 +119,21 @@ CONFIG = StudyConfig(
         "ray_traces":             False,
         # all four of the main ones side by side, in one file
         "panel":                  True,
+
+        # The four the original pipeline drew into runs/<...>/sample_<i>/.
+        # They show the same measurement as the ones above, but keep the
+        # peaks SEPARATE PER RAY — the question they answer is "which ray
+        # found which line", not "how much of the plane was measured".
+        # NOTE: these are four more files per device, so with
+        # figure_devices "ALL" they roughly double the figure count.
+        # the sensor image, each ray's peaks in its own colour
+        "all_rays_peaks_overlay": True,
+        # the measured points and their peaks on the bare cell grid
+        "ml_measurement":         True,
+        # ground truth + measured points + each ray's peaks, per-ray colours
+        "summary_total":          True,
+        # the same with every peak as one big magenta X — the paper figure
+        "summary_total_all_crosses": True,
     },
 
     # Which devices to draw, per split.

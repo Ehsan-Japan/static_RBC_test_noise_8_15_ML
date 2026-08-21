@@ -77,6 +77,10 @@ FIGURES = None
 #     "measurement":            True,
 #     "ray_traces":             True,
 #     "panel":                  True,
+#     "all_rays_peaks_overlay": True,
+#     "ml_measurement":         True,
+#     "summary_total":          True,
+#     "summary_total_all_crosses": True,
 # }
 
 # Which devices, per split.  None = use whatever the folder's config.json says.

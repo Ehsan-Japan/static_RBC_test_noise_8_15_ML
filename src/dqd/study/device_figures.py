@@ -15,6 +15,10 @@ dpi, for whichever devices you actually want.  That is what this module does.
                        measurement.png
                        ray_traces.png
                        panel.png
+                       all_rays_peaks_overlay.png
+                       ml_measurement.png
+                       summary_total.png
+                       summary_total_all_crosses.png
         test/sample_1/...
 
 Every figure is drawn in the ONE house style from dqd.config.figure_style —
@@ -32,7 +36,9 @@ Note which figures depend on the measurement budget and which do not:
 
     charge_sensor, charge_sensor_gradient, stability_diagram
         properties of the DEVICE — identical in every configuration
-    rays, rays_on_truth, measurement, ray_traces
+    rays, rays_on_truth, measurement, ray_traces,
+    all_rays_peaks_overlay, ml_measurement, summary_total,
+    summary_total_all_crosses
         properties of the MEASUREMENT — they change with rays and points,
         which is why they live in the configuration folder and not in the
         shared device pool
