@@ -57,7 +57,19 @@ STRATEGIES: Dict[str, str] = {
     "rays": "n_rays directional sweeps of n_points each — the real experiment",
     "grid": "the same number of points, on an evenly spaced lattice",
     "random": "the same number of points, uniformly at random",
+    # ── line-based arms: same budget, same 1-D continuity, different geometry
+    "hcuts": "n_rays horizontal line cuts (sweep Vx, step Vy) — the standard "
+             "experiment and the Hernandes et al. line-cut mask",
+    "vcuts": "n_rays vertical line cuts (sweep Vy, step Vx)",
+    "parallel_diag": "n_rays parallel oblique lines along (-1,-1), evenly "
+                     "spaced — oblique direction WITHOUT the corner fan",
+    "random_rays": "n_rays lines with random origin and random angle — "
+                   "1-D continuity with no chosen direction at all",
 }
+
+# The arms whose points lie on lines.  They carry a real (n_rays, n_points)
+# trace per line, so peaks can be detected along them exactly as on the fan.
+LINE_STRATEGIES = ("rays", "hcuts", "vcuts", "parallel_diag", "random_rays")
 
 DEFAULT = "rays"
 
@@ -126,6 +138,150 @@ def _scattered(sample_dir: str, n_rays: int, n_points: int, strategy: str,
                        n_rays=n_rays, n_points=n_points)
 
 
+# ── the line-based alternatives ───────────────────────────────────────────
+#
+# Each returns (n_rays, n_points, 2) voltage points: one polyline per line.
+# They are clipped to the window so every point is on the measured grid, and
+# then sampled at nearest cell — identical treatment to ray_polyline().
+
+def _clip_segment(start: np.ndarray, d: np.ndarray, n_points: int, ux, uy
+                  ) -> np.ndarray:
+    """
+    (n_points, 2) points from `start` along unit direction `d`, stopping at
+    the first wall of the voltage window — the same rule ray_polyline uses.
+    """
+    lo = np.array([ux[0], uy[0]])
+    hi = np.array([ux[-1], uy[-1]])
+    ts = []
+    for k in range(2):
+        if abs(d[k]) > 1e-10:
+            for wall in (lo[k], hi[k]):
+                t = (wall - start[k]) / d[k]
+                if t > 1e-12:
+                    ts.append(t)
+    length = min(ts) if ts else 0.0
+    s = np.linspace(0.0, length, n_points)
+    pts = start[None, :] + s[:, None] * d[None, :]
+    return np.clip(pts, lo, hi)
+
+
+def hcut_lines(n_rays: int, n_points: int, ux, uy) -> np.ndarray:
+    """Horizontal cuts: sweep Vx at n_rays evenly spaced Vy (cell centres)."""
+    vy = uy[0] + (np.arange(n_rays) + 0.5) / n_rays * (uy[-1] - uy[0])
+    vx = np.linspace(ux[0], ux[-1], n_points)
+    return np.stack([np.stack([vx, np.full(n_points, y)], axis=1)
+                     for y in vy])
+
+
+def vcut_lines(n_rays: int, n_points: int, ux, uy) -> np.ndarray:
+    """Vertical cuts: sweep Vy at n_rays evenly spaced Vx (cell centres)."""
+    vx = ux[0] + (np.arange(n_rays) + 0.5) / n_rays * (ux[-1] - ux[0])
+    vy = np.linspace(uy[0], uy[-1], n_points)
+    return np.stack([np.stack([np.full(n_points, x), vy], axis=1)
+                     for x in vx])
+
+
+def parallel_diag_lines(n_rays: int, n_points: int, ux, uy) -> np.ndarray:
+    """
+    n_rays lines all along (-1, -1), evenly spaced across the window.
+
+    The lines are indexed by their offset c = Vx - Vy (constant along the
+    direction (-1,-1)); c is spread evenly over its range so the family
+    covers the diagram from the bottom-right corner to the top-left one,
+    with no two lines sharing an origin.  The central line is the window's
+    main diagonal — the same line as the fan's middle ray when n_rays is
+    odd, which is the point of the comparison.
+    """
+    wx, wy = ux[-1] - ux[0], uy[-1] - uy[0]
+    c_lo, c_hi = -wy, wx                      # Vx - Vy, in window-relative units
+    cs = c_lo + (np.arange(n_rays) + 0.5) / n_rays * (c_hi - c_lo)
+    d = np.array([-1.0, -1.0]) / np.sqrt(2.0)
+    lines = []
+    for c in cs:
+        # start on the top or right edge, whichever the line enters through
+        if c >= 0:
+            start = np.array([ux[-1], uy[-1] - c])          # right edge
+        else:
+            start = np.array([ux[-1] + c, uy[-1]])          # top edge
+        lines.append(_clip_segment(start, d, n_points, ux, uy))
+    return np.stack(lines)
+
+
+def random_ray_lines(n_rays: int, n_points: int, ux, uy,
+                     rng: np.random.Generator) -> np.ndarray:
+    """
+    n_rays lines, each from a random origin on the window's boundary at a
+    random angle pointing into the window.  Same length rule as the fan.
+    """
+    lo = np.array([ux[0], uy[0]])
+    hi = np.array([ux[-1], uy[-1]])
+    lines = []
+    for _ in range(n_rays):
+        edge = rng.integers(4)
+        u = rng.uniform(0.0, 1.0)
+        if edge == 0:   start = np.array([lo[0] + u * (hi[0] - lo[0]), hi[1]])  # top
+        elif edge == 1: start = np.array([lo[0] + u * (hi[0] - lo[0]), lo[1]])  # bottom
+        elif edge == 2: start = np.array([lo[0], lo[1] + u * (hi[1] - lo[1])])  # left
+        else:           start = np.array([hi[0], lo[1] + u * (hi[1] - lo[1])])  # right
+        # a direction pointing into the window: aim at a random interior point
+        target = lo + rng.uniform(0.05, 0.95, size=2) * (hi - lo)
+        d = target - start
+        d = d / (np.linalg.norm(d) + 1e-12)
+        lines.append(_clip_segment(start, d, n_points, ux, uy))
+    return np.stack(lines)
+
+
+def lines_for(strategy: str, n_rays: int, n_points: int, ux, uy,
+              rng: np.random.Generator) -> np.ndarray:
+    """(n_rays, n_points, 2) voltage polylines for any LINE strategy."""
+    if strategy == "rays":
+        from ..ml.ray_peaks import fan_angles, ray_polyline
+        return np.stack([ray_polyline(a, n_points, ux, uy)
+                         for a in fan_angles(n_rays)])
+    if strategy == "hcuts":
+        return hcut_lines(n_rays, n_points, ux, uy)
+    if strategy == "vcuts":
+        return vcut_lines(n_rays, n_points, ux, uy)
+    if strategy == "parallel_diag":
+        return parallel_diag_lines(n_rays, n_points, ux, uy)
+    if strategy == "random_rays":
+        return random_ray_lines(n_rays, n_points, ux, uy, rng)
+    raise KeyError(strategy)
+
+
+def _lines(sample_dir: str, n_rays: int, n_points: int, strategy: str,
+           rng: np.random.Generator) -> Measurement:
+    """
+    One device measured along n_rays lines of n_points — every line strategy
+    except the fan, which keeps its own (byte-identical) implementation in
+    ml/ray_peaks.measure.  Peaks are detected on each 1-D trace with the same
+    find_peaks call the fan uses, so the peaks channel is populated for the
+    figures and the comparison is geometry and nothing else.
+    """
+    from scipy.signal import find_peaks
+    from ..ml.ray_peaks import voltage_to_pixel
+    ux, uy, Z = load_grid(sample_dir)
+    polylines = lines_for(strategy, n_rays, n_points, ux, uy, rng)
+
+    traces = np.empty((n_rays, n_points), dtype=np.float32)
+    seen, peaks = [], []
+    for k, pts in enumerate(polylines):
+        row, col = voltage_to_pixel(pts[:, 0], pts[:, 1], ux, uy)
+        trace = Z[row, col].astype(np.float32)
+        traces[k] = trace
+        seen.append(np.stack([row, col], axis=1))
+        idx = find_peaks(trace)[0]
+        if len(idx):
+            peaks.append(np.stack([row[idx], col[idx]], axis=1))
+    visited = np.unique(np.concatenate(seen), axis=0)
+    peak_rc = (np.unique(np.concatenate(peaks), axis=0) if peaks
+               else np.empty((0, 2), dtype=int))
+    values = Z[visited[:, 0], visited[:, 1]].astype(np.float32)
+    return Measurement(peak_rc=peak_rc, visited_rc=visited,
+                       visited_val=values, traces=traces,
+                       n_rays=n_rays, n_points=n_points)
+
+
 # ── the one entry point ───────────────────────────────────────────────────
 
 def measure(sample_dir: str, n_rays: int, n_points: int,
@@ -133,8 +289,10 @@ def measure(sample_dir: str, n_rays: int, n_points: int,
     """One device, measured by one strategy.  Always a Measurement."""
     if strategy == "rays":
         return measure_rays(sample_dir, n_rays, n_points)
-    return _scattered(sample_dir, n_rays, n_points, strategy,
-                      np.random.default_rng(seed))
+    rng = np.random.default_rng(seed)
+    if strategy in LINE_STRATEGIES:
+        return _lines(sample_dir, n_rays, n_points, strategy, rng)
+    return _scattered(sample_dir, n_rays, n_points, strategy, rng)
 
 
 def build(sample_dirs: Sequence[str], n_rays: int, n_points: int,

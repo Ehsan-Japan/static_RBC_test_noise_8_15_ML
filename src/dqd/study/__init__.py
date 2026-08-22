@@ -19,5 +19,8 @@ four-stage sequence:
 
     sampling.py        WHERE the measured points are put — directional rays,
                        an even lattice, or a random draw — at one fixed budget
-    sampling_study.py  the three arms and the paired comparison between them
+    sampling_study.py  the arms of the ladder and the paired comparison
+                       between them
+    geometry.py        the model-free pass behind run_8: line crossings
+                       per point, segment recall, crossing angle
 """

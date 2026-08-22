@@ -75,7 +75,9 @@ _RULE = "=" * 74
 
 # One colour per strategy, used by every figure so the arms are recognisable
 # across the whole gallery.
-COLOURS = {"rays": "#1f5fa8", "grid": "#c0392b", "random": "#7f8c8d"}
+COLOURS = {"rays": "#1f5fa8", "grid": "#c0392b", "random": "#7f8c8d",
+           "hcuts": "#e67e22", "vcuts": "#d35400",
+           "parallel_diag": "#27ae60", "random_rays": "#8e44ad"}
 FALLBACK = "#2e7d32"
 
 

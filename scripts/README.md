@@ -45,6 +45,7 @@ There are extra programs, none of them part of the sequence:
 python scripts/run_0_full_sweep.py               steps 1-4 for a whole sweep
 python scripts/run_5_render_device_figures.py    redraw per-device pictures
 python scripts/run_7_compare_sampling.py         same budget, spent differently
+python scripts/run_8_benchmark_geometry.py       the ladder: WHY the rays win
 ```
 
 **`run_0` is the lazy button.** Give it a list of ray counts and point counts,
@@ -105,6 +106,26 @@ rays visit slightly **fewer** unique pixels than N (nearest-cell sampling
 makes points on a ray coincide), so they win from an equal or smaller budget;
 and each arm is a single training run, so a margin comparable to
 initialisation spread needs repeating at another seed before it is claimed.
+
+**`run_8` is the paper's argument.** Hernandes et al. (arXiv:2603.26432)
+already compare a grid mask against line-cut sweeps, so "lines beat points"
+is not a new claim. run_8 climbs a ladder where each rung changes one
+property of the measurement, at several budgets:
+
+| arm | lines? | oblique? | fan? |
+|---|---|---|---|
+| `random`, `grid` | no | – | – |
+| `hcuts` / `vcuts` | yes | no | no |
+| `parallel_diag` | yes | yes | no |
+| `random_rays` | yes | random | no |
+| `rays` | yes | yes | yes |
+
+It runs a model-free pass first (`results/geometry_<budget>/`: line
+crossings per point, segment recall, crossing angle — no training, seconds),
+then the run_7 network comparison for the whole ladder at every budget, and
+collects `results/ladder_summary.csv` + `ladder_f1_vs_budget.png`. If the
+model-free ordering matches the network ordering, the result is geometry,
+not training. Set `RUN_NETWORK = False` to get the geometry pass alone.
 
 **`run_5`** exists so you can change your mind about pictures — more devices,
 another figure, 300 dpi for the paper — without regenerating any data or
