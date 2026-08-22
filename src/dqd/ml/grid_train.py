@@ -53,18 +53,22 @@ VAL_FRACTION = 0.15      # of the TRAINING devices, never of the test set
 SEED = 0
 
 
-def training_description() -> Dict:
+def training_description(seed: int = SEED) -> Dict:
     """
     The training hyperparameters as a record for models_info.json.  These are
     the constants above — identical in every cell of a sweep — written out so
     a run folder explains, on its own, how its models were trained.
+
+    `seed` is the only one that is deliberately varied: repeating an arm at
+    several training seeds is how the spread of the random initialisation is
+    measured instead of being mistaken for a result.
     """
     return {
         "optimizer": "Adam",
         "learning_rate": LEARNING_RATE,
         "batch_size": BATCH_SIZE,
         "val_fraction": VAL_FRACTION,
-        "seed": SEED,
+        "seed": seed,
         "loss": ("BCEWithLogits (positive class weighted by its rarity, "
                  f"capped at {MAX_POS_WEIGHT}) + soft Dice"),
         "max_pos_weight": MAX_POS_WEIGHT,
@@ -124,7 +128,8 @@ def best_threshold(prob: np.ndarray, Y: np.ndarray, tau: float = 1.0):
 
 
 def train(X: np.ndarray, Y: np.ndarray, epochs: int = 40,
-          verbose: bool = True) -> Tuple[RayToLinesNet, float, Dict]:
+          verbose: bool = True,
+          seed: int = SEED) -> Tuple[RayToLinesNet, float, Dict]:
     """
     Fit the network on ONE budget's (X, Y) and return
     (net, threshold, history).
@@ -137,9 +142,19 @@ def train(X: np.ndarray, Y: np.ndarray, epochs: int = 40,
     Test data never enters this function.  The validation slice used to pick
     the epoch and the threshold is carved out of the training set, so the
     held-out samples stay untouched for evaluate_model.py.
+
+    `seed` is the TRAINING dice: the random initial weights and the order the
+    batches are drawn in.  Two runs that differ only in this seed see exactly
+    the same data and land in slightly different places, and the size of that
+    spread is what says whether a gap between two arms is a result or a roll
+    of the dice.  Repeat an arm at several seeds before believing a margin.
+
+    The validation slice is deliberately NOT drawn from it: it stays pinned to
+    SEED, so every seed of an arm is scored against the same validation
+    devices and the only thing that moves is the training itself.
     """
-    torch.manual_seed(SEED)
-    rng = np.random.default_rng(SEED)
+    torch.manual_seed(seed)
+    rng = np.random.default_rng(SEED)      # the val slice, fixed across seeds
 
     idx = rng.permutation(len(X))
     n_val = max(1, int(VAL_FRACTION * len(X)))

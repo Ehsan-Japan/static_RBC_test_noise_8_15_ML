@@ -93,6 +93,22 @@ class StudyConfig:
     # ── training (stage 2) ───────────────────────────────────────────────
     epochs: int = 40
 
+    # The TRAINING dice.  Training starts from random initial weights; this
+    # seed is their starting state (and the order the batches are drawn in).
+    # Nothing about the data depends on it — `seed` picks the devices and
+    # `split_seed` the train/test split — so two configurations differing
+    # only here see literally the same measurements and differ only in where
+    # the optimisation landed.
+    #
+    # That is the point: ONE run per arm gives one number from one roll, and
+    # a gap between two arms cannot then be told apart from the spread of the
+    # roll itself.  Re-run each arm at several train_seeds and compare the
+    # clusters, not the single numbers (scripts/run_8_benchmark_geometry.py
+    # does exactly this).  model/ and evaluation/ carry the seed in their
+    # names, so the runs sit side by side instead of overwriting each other;
+    # the dataset does not, because it is the same dataset.
+    train_seed: int = 0
+
     # ── per-device figures (stage 1, and re-runnable with run_5) ─────────
     # Which pictures to draw for individual devices, and for which devices.
     # These change nothing about the data or the results — they only add
@@ -180,12 +196,21 @@ class StudyConfig:
         return self.path(FIGURES_DIR)
 
     @property
+    def _seed_suffix(self) -> str:
+        """'' for the default seed, '_seed3' otherwise.
+
+        Empty at train_seed 0 on purpose: every model and evaluation already
+        on disk was trained at that seed, and keeps the folder it is in.
+        """
+        return "" if self.train_seed == 0 else f"_seed{self.train_seed}"
+
+    @property
     def model_dir(self) -> str:
-        return self.path(MODEL_DIR)
+        return self.path(MODEL_DIR + self._seed_suffix)
 
     @property
     def eval_dir(self) -> str:
-        return self.path(EVAL_DIR)
+        return self.path(EVAL_DIR + self._seed_suffix)
 
     @property
     def checkpoint(self) -> str:

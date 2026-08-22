@@ -76,22 +76,30 @@ def train(cfg: StudyConfig) -> Tuple[str, Dict]:
 
     Re-running overwrites this configuration's model and nothing else: every
     other budget keeps its own folder and its own checkpoint.
+
+    cfg.train_seed is the random initialisation.  It changes only where the
+    optimisation lands, never the data, and it changes the model/ and
+    evaluation/ folder names — so the same arm can be trained at five seeds
+    and all five results survive, which is what turns one number into a
+    number with a spread.
     """
     X, Y, samples = load_split(cfg.train_npz)
     os.makedirs(cfg.model_dir, exist_ok=True)
 
     print(f"training on {len(X)} devices, {cfg.n_rays} rays x "
           f"{cfg.n_points} points placed by '{cfg.sampling}', "
-          f"{cfg.epochs} epochs")
+          f"{cfg.epochs} epochs, train seed {cfg.train_seed}")
     print(f"  {100 * float(X[:, 1].mean()):.2f}% of pixels measured, "
           f"{100 * float(Y.mean()):.2f}% are transition lines")
 
-    net, threshold, history = grid_train.train(X, Y, epochs=cfg.epochs)
+    net, threshold, history = grid_train.train(X, Y, epochs=cfg.epochs,
+                                              seed=cfg.train_seed)
 
     grid_train.save(net, threshold, cfg.checkpoint, cfg.n_rays, cfg.n_points,
                     extra={"n_train": len(X),
                            "sampling": cfg.sampling,
                            "epochs": cfg.epochs,
+                           "train_seed": cfg.train_seed,
                            "config": cfg.name,
                            "train_npz": os.path.abspath(cfg.train_npz)})
     print(f"\nsaved {os.path.abspath(cfg.checkpoint)}  "
@@ -100,6 +108,8 @@ def train(cfg: StudyConfig) -> Tuple[str, Dict]:
     save_model_report(cfg.model_dir,
                       input_hw=(cfg.resolution, cfg.resolution),
                       extra={"configuration": cfg.to_dict(),
+                             "training": grid_train.training_description(
+                                 cfg.train_seed),
                              "threshold": threshold,
                              "n_train_devices": len(X),
                              "best_val_f1": max(history["val_f1"])})
@@ -108,13 +118,14 @@ def train(cfg: StudyConfig) -> Tuple[str, Dict]:
     plot_training_curve(
         history, os.path.join(cfg.model_dir, "training_curve.png"),
         f"{cfg.name}   ({cfg.n_rays} rays x {cfg.n_points} points, "
-        f"{len(X)} devices)")
+        f"{len(X)} devices, train seed {cfg.train_seed})")
 
     summary = {"checkpoint": os.path.abspath(cfg.checkpoint),
                "threshold": float(threshold),
                "best_val_f1": float(max(history["val_f1"])),
                "final_train_loss": float(history["train_loss"][-1]),
                "epochs": cfg.epochs,
+               "train_seed": cfg.train_seed,
                "n_train": len(X)}
     with open(os.path.join(cfg.model_dir, "training_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)

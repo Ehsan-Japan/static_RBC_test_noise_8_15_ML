@@ -108,7 +108,8 @@ def out_name(template: StudyConfig, strategies: Sequence[str]) -> str:
     same comparison updates its folder and a different one gets its own.
     """
     return (f"sampling_{template.n_rays}x{template.n_points}"
-            f"_{template.n_train}_samples_" + "-".join(strategies))
+            f"_{template.n_train}_samples_" + "-".join(strategies)
+            + template._seed_suffix)
 
 
 def run_arm(cfg: StudyConfig, skip_existing: bool = True) -> Dict:
@@ -350,7 +351,7 @@ def _text(template: StudyConfig, rows: List[Dict], tests: Dict[str, Dict],
         f"  diagram                 {template.resolution} x "
         f"{template.resolution} px",
         f"  network / training      identical in every arm "
-        f"({template.epochs} epochs)",
+        f"({template.epochs} epochs, train seed {template.train_seed})",
         "",
         "  Everything except WHERE the points are put is held fixed, so a",
         "  difference below is a difference in placement and nothing else.",
@@ -401,10 +402,14 @@ def _text(template: StudyConfig, rows: List[Dict], tests: Dict[str, Dict],
             "",
         ]
     lines += [
-        "  ONE CAVEAT, and it belongs in the paper: this is a single training",
-        "  run per arm, so the difference carries whatever spread comes from",
-        "  the random initialisation.  Re-run with a different training seed",
-        "  before claiming a margin that is small compared to it.",
+        "  ONE CAVEAT, and it belongs in the paper: this page is a SINGLE",
+        f"  training run per arm (train seed {template.train_seed}), so every",
+        "  difference above carries whatever spread comes from the random",
+        "  initialisation, and one number cannot be told apart from one roll",
+        "  of that dice.  scripts/run_8_benchmark_geometry.py repeats the",
+        "  whole ladder at several train seeds and writes the mean and the",
+        "  spread to results/ladder_seeds.csv — quote that, not this, for a",
+        "  margin that is small compared to the seed spread.",
         "",
         f"  files: {os.path.abspath(folder)}",
         _RULE,
@@ -510,6 +515,8 @@ def run(template: StudyConfig, strategies: Sequence[str],
           f"= {template.n_rays * template.n_points} measured points")
     print(f"devices: {template.n_train} train / {template.n_test} held out, "
           f"the same in every arm (split seed {template.split_seed})")
+    print(f"training: {template.epochs} epochs, train seed "
+          f"{template.train_seed} — one roll of the initialisation dice")
     print("arms:")
     for cfg in cfgs:
         state = "reuse" if os.path.isfile(cfg.checkpoint) else "TRAIN"
